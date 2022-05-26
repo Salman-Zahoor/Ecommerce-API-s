@@ -2,9 +2,52 @@ const Otp=require("../model/otp")
 const User = require("../model/user")
 const nodemailer = require("nodemailer")
 const bcrypt = require("bcryptjs")
+const jwt = require("jsonwebtoken")
 const express = require("express")
 const router= express.Router()
 
+let JWTSECRET="jskjjekmhdwnu291202iiwi93kw9u2"
+
+///Login Api
+router.post("/login",async(req,res)=>{
+ const {email,password}=req.body
+ let result=await User.findOne({email})
+ if (result==null){
+     res.status().send({
+         error:"Error",
+         message:"User does not exist"
+    })   
+ }else{
+     console.log(result.password,"PaSSWORD");
+     if(await bcrypt.compare(password,result.password)){
+         let token=jwt.sign({id:result._id,name : result.username},JWTSECRET)
+         if (result.status != "Active") {
+             res.status(400).send({
+                 status:"Error",
+                 message:"Your Account is temporary suspended please conatact support"
+             })
+         } else {
+             result.password=null
+             let params={
+                 result,
+                 token
+             }
+             res.status(200).send({
+                 status:"OK",
+                 data:params
+             })
+         }
+     }
+     else{
+        res.status(400).send({
+            status: "ok",
+            message: "Email Or Password is Incorrect"
+        })
+     }
+}
+})
+
+                // User Register Api ///
 router.post("/register",async(req,res)=>{
     const { username, password, email, image, code,fcm } = req.body
     if (!username || !password || !email || !image ) {
@@ -63,8 +106,6 @@ router.post("/register",async(req,res)=>{
 })
 
 
-
-
                 //SEND OTP CODE 
 router.post("/sendCode",async(req,res)=>{
     const {email}=req.body
@@ -113,5 +154,66 @@ router.post("/sendCode",async(req,res)=>{
         console.log(error,"Error");
     }
 })
+
+
+/// Forget Code 
+router.post("/forgetpassword",async(req,res)=>{
+    const {email,password}=req.body
+
+    let result=User.findOne({email})
+    if (result) {
+        let hashedPass= await bcrypt.hash(password, 10)
+        let updateUser= await User.updateOne({_id : result._id},{$set: {password :hashedPass}})
+        res.status(200).send({status:"OK",message:"Updated Successfully"})
+    } else {
+        res.status(400).send({status:"error",message:"Email not Found"})
+    }
+})
+
+router.post('/updateProfile', async (req, res) => {
+    const { email } = req.body
+    let result = await User.findOne({ email })
+    if (result) {
+        let updatedUser = await User.findOneAndUpdate({ _id: result._id }, req.body, { new: true })
+        res.send({
+            status: "ok",
+            data: updatedUser
+        })
+    }
+    else {
+        res.status(400).send({ status: "error", message: "Something went wrong" })
+    }
+})
+
+router.post("/changePassword", async (req, res) => {
+    const { password, email,newPassword } = req.body
+    let result = await User.findOne({ email })
+    if (result) {
+        if (await bcrypt.compare(password, result.password)) {
+            // console.log("password matched");
+            let hashedPassword = await bcrypt.hash(newPassword, 10)
+            let updateUser = await User.updateOne({ _id: result._id }, { $set: { password: hashedPassword } })
+            res.status(200).send({ status: "ok", message: "Updated Successfully" })
+           
+        }
+        else {
+            res.status(400).send({
+                status: "ok",
+                message: "Current Password is Invalid"
+            })
+        }
+    }
+    else {
+        res.status(400).send({
+         status:"Error",
+         message:"Email & Password not found"
+        })
+    }
+
+})
+
+
+
+
 
 module.exports=router
